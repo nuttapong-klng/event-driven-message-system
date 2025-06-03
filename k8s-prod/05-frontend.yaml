@@ -37,7 +37,7 @@ spec:
             - name: NEXT_PUBLIC_INTERNAL_BACKEND_API_URI
               value: "http://backend:8080"
             - name: NEXT_PUBLIC_BACKEND_API_URI
-              value: "https://api.message-system.example.com"
+              value: "https://message-system.example.com/api"
           resources:
             requests:
               memory: 256Mi

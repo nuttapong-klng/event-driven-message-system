@@ -14,7 +14,6 @@ spec:
   tls:
     - hosts:
         - message-system.example.com
-        - api.message-system.example.com
       secretName: message-system-tls
   rules:
     - host: message-system.example.com
@@ -27,13 +26,10 @@ spec:
                 name: frontend
                 port:
                   number: 3000
-    - host: api.message-system.example.com
-      http:
-        paths:
-          - path: /
+          - path: /api
             pathType: Prefix
             backend:
               service:
                 name: backend
                 port:
-                  number: 8080 
+                  number: 8080
