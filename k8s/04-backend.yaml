@@ -2,8 +2,9 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: init-job
-  namespace: message-system
+  namespace: event-driven-message-system
 spec:
+  backoffLimit: 5
   template:
     spec:
       containers:
@@ -12,9 +13,9 @@ spec:
           args:
             - "./main"
             - "init"
-            - "--brokers=kafka:9092"
+            - "--brokers=kafka-cluster-kafka-bootstrap:9092"
             - "--topics=messages,notify-messages"
-            - "--partitions=3"
+            - "--partitions=1"
             - "--replication-factor=1"
             - "--init-db"
             - "--db-conn=postgres://postgres:postgres@postgres:5432/messages?sslmode=disable"
@@ -23,13 +24,20 @@ spec:
               value: "production"
             - name: LOG_LEVEL
               value: "info"
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 200m
       restartPolicy: OnFailure
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: backend
-  namespace: message-system
+  namespace: event-driven-message-system
 spec:
   type: NodePort
   ports:
@@ -43,7 +51,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
-  namespace: message-system
+  namespace: event-driven-message-system
 spec:
   replicas: 1
   selector:
@@ -63,7 +71,7 @@ spec:
             - "--addr=0.0.0.0"
             - "--port=8080"
             - "--cors-allowed-origins=*"
-            - "--brokers=kafka:9092"
+            - "--brokers=kafka-cluster-kafka-bootstrap:9092"
             - "--group-id=notify-consumer"
             - "--message-topic=messages"
             - "--notify-topic=notify-messages"
@@ -77,18 +85,31 @@ spec:
               value: "info"
             - name: LOG_FORMAT
               value: "json"
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 200m
           readinessProbe:
             httpGet:
               path: /health
               port: 8080
             initialDelaySeconds: 15
             periodSeconds: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 60
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: consumer
-  namespace: message-system
+  namespace: event-driven-message-system
 spec:
   replicas: 1
   selector:
@@ -105,7 +126,7 @@ spec:
           args:
             - "./main"
             - "consume"
-            - "--brokers=kafka:9092"
+            - "--brokers=kafka-cluster-kafka-bootstrap:9092"
             - "--message-topic=messages"
             - "--notify-topic=notify-messages"
             - "--group-id=messages-consumer"
@@ -116,4 +137,19 @@ spec:
             - name: LOG_LEVEL
               value: "info"
             - name: LOG_FORMAT
-              value: "json" 
+              value: "json"
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 200m
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "ps aux | grep '[c]onsume'"
+            initialDelaySeconds: 30
+            periodSeconds: 60 
