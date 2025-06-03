@@ -1,0 +1,238 @@
+services:
+  # Frontend - NextJS Application
+  frontend:
+    image: conicle/dso-exam-01-frontend:v1.0.1
+    container_name: dso-exam-01-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_INTERNAL_BACKEND_API_URI=http://backend:8080 # Internal communication
+      - NEXT_PUBLIC_BACKEND_API_URI=http://localhost:8080 # External browser access
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    labels:
+      - "service=frontend"
+      - "description=NextJS React application with Bun runtime (SSR)"
+
+  # API Backend - Go Fiber Server
+  backend:
+    image: conicle/dso-exam-01-backend:v1.0.1
+    container_name: dso-exam-01-backend
+    command: [
+      "./main", "serve",
+      "--addr=0.0.0.0",
+      "--port=8080",
+      "--cors-allowed-origins=*",
+      "--brokers=kafka:9093",
+      "--group-id=notify-consumer",
+      "--message-topic=messages",
+      "--notify-topic=notify-messages",
+      "--db-conn=postgres://postgres:postgres@postgres:5432/messages?sslmode=disable"
+    ]
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    labels:
+      - "service=backend"
+      - "description=Go Fiber API server for message publishing and SSE"
+
+  # Consumer Service - Go Background Worker
+  consumer:
+    image: conicle/dso-exam-01-backend:v1.0.1
+    container_name: dso-exam-01-consumer
+    command: [
+      "./main", "consume",
+      "--brokers=kafka:9093",
+      "--message-topic=messages",
+      "--notify-topic=notify-messages",
+      "--group-id=messages-consumer",
+      "--db-conn=postgres://postgres:postgres@postgres:5432/messages?sslmode=disable"
+    ]
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    labels:
+      - "service=consumer"
+      - "description=Background message processor and database writer"
+
+  # Initializer - One-time setup
+  init:
+    image: conicle/dso-exam-01-backend:v1.0.1
+    container_name: dso-exam-01-init
+    command: [
+      "./main", "init",
+      "--brokers=kafka:9093",
+      "--topics=messages,notify-messages",
+      "--partitions=3",
+      "--replication-factor=1",
+      "--init-db",
+      "--db-conn=postgres://postgres:postgres@postgres:5432/messages?sslmode=disable"
+    ]
+    environment:
+      - APP_ENV=production
+      - LOG_LEVEL=info
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    labels:
+      - "service=initializer"
+      - "description=One-time Kafka topic and database creation"
+
+  # Apache Kafka - Event Streaming Platform
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: dso-exam-01-kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:29093'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      # Listener configuration
+      KAFKA_LISTENERS: 'PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:9093,CONTROLLER://kafka:29093'
+      KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka:9092,PLAINTEXT_HOST://kafka:9093'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT'
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'PLAINTEXT'
+      # General settings
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_LOG_CLEANER_ENABLE: 'true'
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: 'false'
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics --bootstrap-server localhost:9093 --list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    labels:
+      - "service=kafka"
+      - "description=Apache Kafka message broker in KRaft mode"
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: dso-exam-01-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: messages
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=C --lc-ctype=C"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d messages"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    labels:
+      - "service=database"
+      - "description=PostgreSQL database for message persistence"
+
+  # Kafka UI - Management Interface (Optional)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: dso-exam-01-kafka-ui
+    ports:
+      - "8081:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: kafka-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: localhost:9093
+      KAFKA_CLUSTERS_0_PROPERTIES_SECURITY_PROTOCOL_MAP: PLAINTEXT
+    depends_on:
+      kafka:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    labels:
+      - "service=monitoring"
+      - "description=Kafka management UI for topic monitoring"
+
+  # pgAdmin - Database Management Interface (Optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: dso-exam-01-pgadmin
+    ports:
+      - "8082:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@dso-exam-01.local
+      PGADMIN_DEFAULT_PASSWORD: admin
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    labels:
+      - "service=monitoring"
+      - "description=PostgreSQL management interface"
+
+volumes:
+  kafka_data:
+    driver: local
+    labels:
+      description: "Kafka data persistence"
+  postgres_data:
+    driver: local
+    labels:
+      description: "PostgreSQL data persistence"
+  pgadmin_data:
+    driver: local
+    labels:
+      description: "pgAdmin configuration data"
+
+networks:
+  default:
+    name: dso-exam-01-network
+    labels:
+      description: "Messages Demo application network"
