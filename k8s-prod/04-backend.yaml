@@ -1,0 +1,154 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: init-job
+  namespace: message-system-prod
+spec:
+  backoffLimit: 5
+  template:
+    spec:
+      containers:
+        - name: init
+          image: conicle/dso-exam-01-backend:v1.0.1
+          args:
+            - "./main"
+            - "init"
+            - "--brokers=kafka-cluster-kafka-bootstrap:9092"
+            - "--topics=messages,notify-messages"
+            - "--partitions=1"
+            - "--replication-factor=1"
+            - "--init-db"
+            - "--db-conn=postgres://postgres:postgres@postgres:5432/messages?sslmode=disable"
+          env:
+            - name: APP_ENV
+              value: "production"
+            - name: LOG_LEVEL
+              value: "info"
+          resources:
+            requests:
+              memory: 128Mi
+              cpu: 100m
+            limits:
+              memory: 256Mi
+              cpu: 200m
+      restartPolicy: OnFailure
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: message-system-prod
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: backend
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: message-system-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: conicle/dso-exam-01-backend:v1.0.1
+          args:
+            - "./main"
+            - "serve"
+            - "--addr=0.0.0.0"
+            - "--port=8080"
+            - "--cors-allowed-origins=*"
+            - "--brokers=kafka-cluster-kafka-bootstrap:9092"
+            - "--group-id=notify-consumer"
+            - "--message-topic=messages"
+            - "--notify-topic=notify-messages"
+            - "--db-conn=postgres://postgres:postgres@postgres:5432/messages?sslmode=disable"
+          ports:
+            - containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: "production"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: LOG_FORMAT
+              value: "json"
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 200m
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 60
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consumer
+  namespace: message-system-prod
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: consumer
+  template:
+    metadata:
+      labels:
+        app: consumer
+    spec:
+      containers:
+        - name: consumer
+          image: conicle/dso-exam-01-backend:v1.0.1
+          args:
+            - "./main"
+            - "consume"
+            - "--brokers=kafka-cluster-kafka-bootstrap:9092"
+            - "--message-topic=messages"
+            - "--notify-topic=notify-messages"
+            - "--group-id=messages-consumer"
+            - "--db-conn=postgres://postgres:postgres@postgres:5432/messages?sslmode=disable"
+          env:
+            - name: APP_ENV
+              value: "production"
+            - name: LOG_LEVEL
+              value: "info"
+            - name: LOG_FORMAT
+              value: "json"
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 200m
+          livenessProbe:
+            exec:
+              command:
+                - sh
+                - -c
+                - "ps aux | grep '[c]onsume'"
+            initialDelaySeconds: 30
+            periodSeconds: 60 

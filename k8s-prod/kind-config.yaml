@@ -1,0 +1,32 @@
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: message-system-prod
+nodes:
+- role: control-plane
+  image: kindest/node:v1.27.3
+  extraPortMappings:
+  - containerPort: 31059
+    hostPort: 80
+    protocol: TCP
+  - containerPort: 30914
+    hostPort: 443
+    protocol: TCP
+  - containerPort: 30000
+    hostPort: 3000
+    protocol: TCP
+  - containerPort: 30080
+    hostPort: 8080
+    protocol: TCP
+  extraMounts:
+  - hostPath: /tmp/strimzi-data
+    containerPath: /var/lib/strimzi
+  kubeadmConfigPatches:
+  - |
+    kind: InitConfiguration
+    nodeRegistration:
+      kubeletExtraArgs:
+        node-labels: "ingress-ready=true"
+  - |
+    kind: KubeletConfiguration
+    evictionHard:
+      memory.available: "200Mi" 
