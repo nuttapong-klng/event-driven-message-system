@@ -19,8 +19,8 @@ sh ./setup-cluster.sh
 ## Accessing the Application
 
 The application is accessible through:
-- Frontend: https://localhost:3000
-- API endpoints: https://localhost/8080
+- Frontend: http://localhost:3000
+- API endpoints: http://localhost/8080
 
 
 ## Cleanup
