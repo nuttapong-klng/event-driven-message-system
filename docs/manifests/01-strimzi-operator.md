@@ -1,4 +1,8 @@
-# Explanation of `k8s/01-strimzi-operator.yaml`
+# ⚠️ IMPORTANT REMARK
+
+> **❗ The file `k8s/01-strimzi-operator.yaml` is NOT used in the `setup-cluster.sh` script.**  
+> The Strimzi Kafka Operator is installed directly using Helm commands in the script.  
+> This manifest is intended for use with FluxCD or GitOps workflows, not for direct application in the provided setup script.
 
 This document explains the purpose and content of the file `k8s/01-strimzi-operator.yaml`, which is responsible for deploying the Strimzi Kafka Operator in your Kubernetes cluster using FluxCD and Helm.
 
