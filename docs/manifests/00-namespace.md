@@ -1,54 +1,42 @@
-# Explanation of `pod-explaination.md`
+# Explanation of `k8s/00-namespace.yaml`
 
-This document explains the purpose and content of the file `docs/pod-explaination.md`, which summarizes which Kubernetes manifests in your `k8s/` directory are responsible for creating pods in your cluster.
+This document explains the purpose and content of the file `k8s/00-namespace.yaml`, which is responsible for creating a dedicated namespace for your event-driven message system in the Kubernetes cluster.
 
 ---
 
 ## Purpose of the File
 
-The `pod-explaination.md` file is designed to help you (or any reader) quickly understand which Kubernetes manifests in your project actually result in running pods, and what those pods are for. This is useful for troubleshooting, onboarding, or architecture review.
+The `k8s/00-namespace.yaml` manifest defines a Kubernetes Namespace resource named `event-driven-message-system`. This namespace is labeled for the production environment and is used to logically isolate and organize all resources related to the event-driven message system within the cluster.
 
 ---
 
 ## Structure and Content
 
-### 1. Introduction
+### Namespace Definition
 
-- The file starts with a brief statement explaining that it will list which Kubernetes configurations in the `k8s/` directory result in the creation of pods.
+```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: event-driven-message-system
+  labels:
+    env: production
+```
 
-### 2. Resources That Define Pods
-
-- This section lists, in detail, each type of Kubernetes resource that leads to pod creation:
-  - **StatefulSet**: Used for the PostgreSQL database.
-  - **Deployment**: Used for the backend, consumer, and frontend applications.
-  - **Job**: Used for a one-time initialization task.
-  - **Kafka (Custom Resource)**: Managed by the Strimzi operator, which creates pods for Kafka brokers, Zookeeper, and entity operators.
-
-### 3. Summary Table
-
-- A concise table summarizes all the resources that create pods:
-  - **File**: The YAML file where the resource is defined.
-  - **Kind**: The type of Kubernetes resource (e.g., Deployment, StatefulSet, Job, Kafka CR).
-  - **Name**: The name of the resource.
-  - **Results in Pod(s)?**: Indicates if the resource results in pod creation.
-  - **Purpose**: A short description of what the pods are for.
-
-### 4. Notes
-
-- This section clarifies that:
-  - Not all Kubernetes resources create pods (e.g., Service, ConfigMap, Secret do not).
-  - The Strimzi operator is responsible for creating Kafka-related pods based on custom resources.
-  - The `kind-config.yaml` file is only for cluster setup and does not define pods.
+- **apiVersion:** Specifies the Kubernetes API version for the Namespace resource.
+- **kind:** Indicates that this manifest creates a Namespace object.
+- **metadata:**
+  - **name:** Sets the namespace name to `event-driven-message-system`.
+  - **labels:** Adds a label `env: production` to identify the environment type.
 
 ---
 
-## Why This File Is Useful
+## Why This File Is Important
 
-- **Quick Reference**: You can quickly see which files and resources are responsible for running workloads (pods) in your cluster.
-- **Onboarding**: New team members can understand the architecture and deployment at a glance.
-- **Troubleshooting**: If you're looking for where a particular pod comes from, this file points you to the right manifest.
-- **Documentation**: It improves the overall documentation and maintainability of your Kubernetes setup.
+- **Resource Isolation:** Provides a dedicated namespace for all resources related to the event-driven message system, improving organization and security.
+- **Environment Labeling:** The `env: production` label helps distinguish this namespace as part of the production environment, which is useful for resource management, monitoring, and automation.
+- **Foundation for Deployment:** Ensures that all subsequent resources (such as Kafka, databases, and applications) can be deployed into a well-defined, isolated environment.
 
 ---
 
-If you want a deeper explanation of any specific resource or YAML file mentioned in the table, refer to the respective documentation or ask for more information.
+For more details on Kubernetes namespaces and best practices, refer to the [Kubernetes documentation](https://kubernetes.io/docs/concepts/overview/working-with-objects/namespaces/), or ask for further explanation.
